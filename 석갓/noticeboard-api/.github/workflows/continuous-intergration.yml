@@ -1,0 +1,57 @@
+name: Continuous integration
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        submodules: true
+        token: ${{ secrets.CI_PAT }}
+
+    - name: set up JDK 11
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'corretto'
+        cache: gradle
+
+    - name: grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Get Github action IP
+      id: ip
+      uses: haythem/public-ip@v1.2
+
+    - name: Add Github Actions IP to Security group
+      run: |
+        aws ec2 authorize-security-group-ingress --group-id ${{ secrets.AWS_RDS_SG_ID }} --group-name ${{secrets.AWS_RDS_SG_NAME}} --protocol tcp --port 3306 --cidr ${{ steps.ip.outputs.ipv4 }}/32
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+
+    - name: Build with Gradle
+      run: ./gradlew build -Djooq.codegen.jdbc.driver=${{ secrets.JDBC_DRIVER }} -Djooq.codegen.jdbc.url=${{ secrets.JDBC_URL }} -Djooq.codegen.jdbc.user=${{ secrets.JDBC_USER }} -Djooq.codegen.jdbc.password=${{ secrets.JDBC_PASSWORD }}
+
+    - name: Remove Github Actions IP from security group
+      if: always()
+      run: |
+        aws ec2 revoke-security-group-ingress --group-id ${{ secrets.AWS_RDS_SG_ID }} --group-name ${{secrets.AWS_RDS_SG_NAME}} --protocol tcp --port 3306 --cidr ${{ steps.ip.outputs.ipv4 }}/32
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+
+    - name: add comments to a pull request
+      uses: mikepenz/action-junit-report@v3
+      if: always()
+      with:
+        report_paths: build/test-results/test/TEST-*.xml

@@ -1,0 +1,6 @@
+[submodule "main-config-files"]
+	path = main-config-files
+	url = git@github.com:seokho-1116/main-config-files.git
+[submodule "test-config-files"]
+	path = test-config-files
+	url = git@github.com:seokho-1116/test-config-files.git
